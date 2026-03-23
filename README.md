@@ -4,23 +4,25 @@
 
 A CLI tool that converts Mermaid diagrams into Excel (`.xlsx`) files.
 
-[![Go Version](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go)](https://go.dev/)
+[![Build Check](https://github.com/v420v/mrxl/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/v420v/mrxl/actions/workflows/build.yml) [![Go Version](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go)](https://go.dev/)
 
 ## Features
-- [x] Sequence Diagram
-- [ ] Flowchart
-- [ ] Class Diagram
-- [ ] State Diagram
-- [ ] Entity Relationship Diagram
-- [ ] User Journey Diagram
-- [ ] Gantt diagrams
-- [ ] Pie chart diagrams
-- [ ] Quadrant Chart
-- [ ] Requirement Diagram
-- [ ] GitGraph Diagrams
-- [ ] C4 Diagrams
-- [ ] Mindmap
-- [ ] Timeline Diagram
+| Name | Status |
+|---------|--------|
+| Sequence Diagram | ⚠️ |
+| Flowchart | ❌ |
+| Class Diagram | ❌ |
+| State Diagram | ❌ |
+| Entity Relationship Diagram | ❌ |
+| User Journey Diagram | ❌ |
+| Gantt Diagram | ❌ |
+| Pie Chart Diagram | ❌ |
+| Quadrant Chart | ❌ |
+| Requirement Diagram | ❌ |
+| GitGraph Diagram | ❌ |
+| C4 Diagram | ❌ |
+| Mindmap | ❌ |
+| Timeline Diagram | ❌ |
 
 ## Quick Start
 
