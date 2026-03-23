@@ -1,0 +1,9 @@
+SequenceDiagram
+  participant User
+  participant Server
+  participant DATABASE
+
+  User->Server: Request
+  Server->DATABASE: Query
+  DATABASE->Server: Response
+  Server->User: Response

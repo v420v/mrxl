@@ -27,13 +27,14 @@ A CLI tool that converts Mermaid diagrams into Excel (`.xlsx`) files.
 ## Quick Start
 
 ```bash
-go run . -src /path/to/mermaid.mmd -out /path/to/diagram.xlsx
+go build cmd/mrxl.go 
+./mrxl -src examples/SequenceDiagram.mmd
 ```
 
 ## CLI Usage
 
 ```bash
-go run . -src INPUT_FILE -out OUTPUT_FILE
+mrxl -src INPUT_FILE -out OUTPUT_FILE
 ```
 
 - `-src`: Input file (required)
