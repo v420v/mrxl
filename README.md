@@ -1,6 +1,8 @@
 # MRXL
 
-A CLI tool that converts Mermaid diagrams into Excel (`.xlsx`) files, perfect for sharing in presentations and reviews.
+![Screenshot of MRXL](./images/top.png)
+
+A CLI tool that converts Mermaid diagrams into Excel (`.xlsx`) files.
 
 [![Go Version](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go)](https://go.dev/)
 
