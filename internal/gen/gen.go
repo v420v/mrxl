@@ -29,6 +29,15 @@ func Generate(diagram ast.Diagram, outFile string) error {
 		if err := g.drawPieChart(); err != nil {
 			return fmt.Errorf("draw pie chart: %w", err)
 		}
+	case *ast.QuadrantChart:
+		const sheet = "QuadrantChart"
+		if err := f.SetSheetName("Sheet1", sheet); err != nil {
+			return fmt.Errorf("set sheet name: %v", err)
+		}
+		g := &QuadrantDrawing{File: f, Sheet: sheet, Diagram: d}
+		if err := g.drawQuadrantChart(); err != nil {
+			return fmt.Errorf("draw quadrant chart: %w", err)
+		}
 	case *ast.TimeDiagram:
 		const sheet = "Timeline"
 		if err := f.SetSheetName("Sheet1", sheet); err != nil {

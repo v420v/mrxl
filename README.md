@@ -17,7 +17,7 @@ A CLI tool that converts Mermaid diagrams into Excel (`.xlsx`) files.
 | User Journey Diagram | ❌ |
 | Gantt Diagram | ❌ |
 | Pie Chart Diagram | ⚠️ |
-| Quadrant Chart | ❌ |
+| Quadrant Chart | ⚠️ |
 | Requirement Diagram | ❌ |
 | GitGraph Diagram | ❌ |
 | C4 Diagram | ❌ |
