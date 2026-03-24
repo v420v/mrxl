@@ -22,7 +22,7 @@ A CLI tool that converts Mermaid diagrams into Excel (`.xlsx`) files.
 | GitGraph Diagram | ❌ |
 | C4 Diagram | ❌ |
 | Mindmap | ❌ |
-| Timeline Diagram | ❌ |
+| Timeline Diagram | ⚠️ |
 
 ## Quick Start
 

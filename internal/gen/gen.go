@@ -29,6 +29,15 @@ func Generate(diagram ast.Diagram, outFile string) error {
 		if err := g.drawPieChart(); err != nil {
 			return fmt.Errorf("draw pie chart: %w", err)
 		}
+	case *ast.TimeDiagram:
+		const sheet = "Timeline"
+		if err := f.SetSheetName("Sheet1", sheet); err != nil {
+			return fmt.Errorf("set sheet name: %v", err)
+		}
+		g := &TimelineDrawing{File: f, Sheet: sheet, Diagram: d}
+		if err := g.drawTimeline(); err != nil {
+			return fmt.Errorf("draw timeline: %w", err)
+		}
 	default:
 		return fmt.Errorf("unsupported diagram type: %T", d)
 	}
