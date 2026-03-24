@@ -15,6 +15,7 @@ func NewParser() (*Parser, error) {
 	p := &Parser{
 		parsers: map[string]diagramParseFunc{
 			strings.ToLower(strings.TrimSpace("sequenceDiagram")): parseSequenceDiagram,
+			strings.ToLower(strings.TrimSpace("pie")):             parsePieChart,
 		},
 	}
 	return p, nil
