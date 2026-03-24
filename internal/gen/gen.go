@@ -29,6 +29,15 @@ func Generate(diagram ast.Diagram, outFile string) error {
 		if err := g.drawPieChart(); err != nil {
 			return fmt.Errorf("draw pie chart: %w", err)
 		}
+	case *ast.UserJourneyDiagram:
+		const sheet = "UserJourney"
+		if err := f.SetSheetName("Sheet1", sheet); err != nil {
+			return fmt.Errorf("set sheet name: %v", err)
+		}
+		g := &JourneyDrawing{File: f, Sheet: sheet, Diagram: d}
+		if err := g.drawUserJourney(); err != nil {
+			return fmt.Errorf("draw user journey: %w", err)
+		}
 	case *ast.QuadrantChart:
 		const sheet = "QuadrantChart"
 		if err := f.SetSheetName("Sheet1", sheet); err != nil {

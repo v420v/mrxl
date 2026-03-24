@@ -18,6 +18,7 @@ func NewParser() (*Parser, error) {
 			strings.ToLower(strings.TrimSpace("pie")):             parsePieChart,
 			strings.ToLower(strings.TrimSpace("timeline")):        parseTimeline,
 			strings.ToLower(strings.TrimSpace("quadrantChart")): parseQuadrantChart,
+			strings.ToLower(strings.TrimSpace("journey")):        parseUserJourney,
 		},
 	}
 	return p, nil
