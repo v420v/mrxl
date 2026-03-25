@@ -56,6 +56,15 @@ func Generate(diagram ast.Diagram, outFile string) error {
 		if err := g.drawTimeline(); err != nil {
 			return fmt.Errorf("draw timeline: %w", err)
 		}
+	case *ast.GanttDiagram:
+		const sheet = "Gantt"
+		if err := f.SetSheetName("Sheet1", sheet); err != nil {
+			return fmt.Errorf("set sheet name: %v", err)
+		}
+		g := &GanttDrawing{File: f, Sheet: sheet, Diagram: d}
+		if err := g.drawGantt(); err != nil {
+			return fmt.Errorf("draw gantt: %w", err)
+		}
 	default:
 		return fmt.Errorf("unsupported diagram type: %T", d)
 	}

@@ -1,0 +1,16 @@
+gantt
+    title Project Schedule
+    dateFormat YYYY-MM-DD
+    section Planning
+        Define scope       :done, scope, 2024-01-01, 7d
+        Requirements       :done, req, after scope, 10d
+    section Development
+        Backend API        :active, api, 2024-01-18, 14d
+        Frontend UI        :crit, ui, after api, 10d
+        Database schema    :done, db, 2024-01-18, 7d
+    section Testing
+        Integration tests  :test, after ui, 7d
+        UAT                :uat, after test, 5d
+    section Deployment
+        Staging deploy     :milestone, staging, after uat, 1d
+        Production deploy  :milestone, crit, prod, after staging, 1d
