@@ -1,12 +1,13 @@
 package ast
 
 type SequenceDiagram struct {
+	Title        string
 	Participants []*Participant
 	Messages     []*Message
 }
 
-func NewSequenceDiagram(participants []*Participant, messages []*Message) Diagram {
-	return &SequenceDiagram{Participants: participants, Messages: messages}
+func NewSequenceDiagram(title string, participants []*Participant, messages []*Message) Diagram {
+	return &SequenceDiagram{Title: title, Participants: participants, Messages: messages}
 }
 
 func (d *SequenceDiagram) Type() string {

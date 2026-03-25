@@ -245,6 +245,30 @@ func (g *SequenceDrawing) drawSequenceDiagram() error {
 		return fmt.Errorf("sequence diagram: no participants")
 	}
 
+	if g.Diagram.Title != "" {
+		lastCol := sequenceSheetColumnCount(len(g.Diagram.Participants))
+		lastColName, err := excelize.ColumnNumberToName(lastCol)
+		if err != nil {
+			return err
+		}
+		if err := g.File.MergeCell(g.Sheet, "A1", lastColName+"1"); err != nil {
+			return err
+		}
+		titleStyle, err := g.File.NewStyle(&excelize.Style{
+			Font:      &excelize.Font{Bold: true, Size: 14, Color: "1F2A44", Family: "Calibri"},
+			Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		})
+		if err != nil {
+			return err
+		}
+		if err := g.File.SetCellValue(g.Sheet, "A1", g.Diagram.Title); err != nil {
+			return err
+		}
+		if err := g.File.SetCellStyle(g.Sheet, "A1", lastColName+"1", titleStyle); err != nil {
+			return err
+		}
+	}
+
 	nameToCol := make(map[string]int)
 	for i, p := range g.Diagram.Participants {
 		if p.Name == "" {

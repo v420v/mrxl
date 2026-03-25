@@ -19,6 +19,7 @@ var sequenceArrowSpecs = []struct {
 }
 
 type sequenceParser struct {
+	title        string
 	participants []*ast.Participant
 	messages     []*ast.Message
 }
@@ -59,12 +60,20 @@ func (p *sequenceParser) addParticipant(name string) *ast.Participant {
 //
 //	participant Name
 //	participant Name as Alias
+//	actor Name
+//	actor Name as Alias
 func parseParticipantLine(line string) (id string, ok bool) {
 	lower := strings.ToLower(line)
-	if !strings.HasPrefix(lower, "participant ") {
+	var keyword string
+	switch {
+	case strings.HasPrefix(lower, "participant "):
+		keyword = "participant "
+	case strings.HasPrefix(lower, "actor "):
+		keyword = "actor "
+	default:
 		return "", false
 	}
-	rest := strings.TrimSpace(line[len("participant "):])
+	rest := strings.TrimSpace(line[len(keyword):])
 	if rest == "" {
 		return "", false
 	}
@@ -125,6 +134,11 @@ func (p *sequenceParser) parseMessageLine(line string) (*ast.Message, error) {
 }
 
 func (p *sequenceParser) parseLine(line string) error {
+	if strings.HasPrefix(strings.ToLower(line), "title ") {
+		p.title = strings.TrimSpace(line[len("title "):])
+		return nil
+	}
+
 	if participant, ok := parseParticipantLine(line); ok {
 		p.addParticipant(participant)
 		return nil
@@ -143,5 +157,5 @@ func (p *sequenceParser) parseLine(line string) error {
 }
 
 func (p *sequenceParser) result() (ast.Diagram, error) {
-	return ast.NewSequenceDiagram(p.participants, p.messages), nil
+	return ast.NewSequenceDiagram(p.title, p.participants, p.messages), nil
 }
