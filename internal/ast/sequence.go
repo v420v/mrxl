@@ -4,15 +4,20 @@ type SequenceDiagram struct {
 	Title        string
 	Autonumber   bool
 	Participants []*Participant
-	Messages     []*Message
+	Events       []SequenceEvent
 }
 
-func NewSequenceDiagram(title string, autonumber bool, participants []*Participant, messages []*Message) Diagram {
-	return &SequenceDiagram{Title: title, Autonumber: autonumber, Participants: participants, Messages: messages}
+func NewSequenceDiagram(title string, autonumber bool, participants []*Participant, events []SequenceEvent) Diagram {
+	return &SequenceDiagram{Title: title, Autonumber: autonumber, Participants: participants, Events: events}
 }
 
 func (d *SequenceDiagram) Type() string {
 	return "sequence"
+}
+
+// SequenceEvent is either a *Message or a *Note.
+type SequenceEvent interface {
+	isSequenceEvent()
 }
 
 type Participant struct {
@@ -69,3 +74,27 @@ func NewMessage(from *Participant, to *Participant, lineStyle LineStyle, arrowHe
 		Text:        text,
 	}
 }
+
+func (m *Message) isSequenceEvent() {}
+
+// NotePosition indicates where the note is placed relative to its participant(s).
+type NotePosition int
+
+const (
+	NoteLeft  NotePosition = iota // note left of X
+	NoteRight                     // note right of X
+	NoteOver                      // note over X[,Y]
+)
+
+type Note struct {
+	Position NotePosition
+	Left     *Participant
+	Right    *Participant // same as Left for single-participant notes
+	Text     string
+}
+
+func NewNote(pos NotePosition, left, right *Participant, text string) *Note {
+	return &Note{Position: pos, Left: left, Right: right, Text: text}
+}
+
+func (n *Note) isSequenceEvent() {}

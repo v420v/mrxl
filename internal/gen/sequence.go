@@ -95,11 +95,11 @@ func applySequenceColumnWidths(f *excelize.File, sheet string, laneCols []int) e
 
 // requiredRowCount returns the row count to use for row heights given the diagram.
 func requiredRowCount(d *ast.SequenceDiagram) int {
-	if d == nil || len(d.Messages) == 0 {
+	if d == nil || len(d.Events) == 0 {
 		return 15
 	}
-	lastMsg := firstMessageRow + (len(d.Messages)-1)*messageRowStep
-	end := max(lastMsg+3, 10)
+	lastEvent := firstMessageRow + (len(d.Events)-1)*messageRowStep
+	end := max(lastEvent+3, 10)
 	return end + 2
 }
 
@@ -285,8 +285,8 @@ func (g *SequenceDrawing) drawSequenceDiagram() error {
 	lwA := arrowLinePt
 
 	lastMsgRow := firstMessageRow
-	if len(g.Diagram.Messages) > 0 {
-		lastMsgRow = firstMessageRow + (len(g.Diagram.Messages)-1)*messageRowStep
+	if len(g.Diagram.Events) > 0 {
+		lastMsgRow = firstMessageRow + (len(g.Diagram.Events)-1)*messageRowStep
 	}
 	lifelineEndRow := lastMsgRow + 3
 	if lifelineEndRow < 10 {
@@ -335,28 +335,111 @@ func (g *SequenceDrawing) drawSequenceDiagram() error {
 		}
 	}
 
-	for i, msg := range g.Diagram.Messages {
-		fromCol, ok := nameToCol[msg.From.Name]
-		if !ok {
-			return fmt.Errorf("message %d: unknown sender %q", i, msg.From.Name)
-		}
-		toCol, ok := nameToCol[msg.To.Name]
-		if !ok {
-			return fmt.Errorf("message %d: unknown receiver %q", i, msg.To.Name)
-		}
+	msgCounter := 0
+	for i, event := range g.Diagram.Events {
 		row := firstMessageRow + i*messageRowStep
-		fill, fg := messageStyle(msg)
-		label := msg.Text
-		if g.Diagram.Autonumber {
-			label = fmt.Sprintf("%d. %s", i+1, label)
-		}
-		if label == "" {
-			label = " "
-		}
-		if err := g.addDirectionalArrow(fromCol, toCol, row, fmt.Sprintf("msg_%d", i), label, &lwA, fill, fg); err != nil {
-			return fmt.Errorf("message %d: %w", i, err)
+		switch ev := event.(type) {
+		case *ast.Message:
+			fromCol, ok := nameToCol[ev.From.Name]
+			if !ok {
+				return fmt.Errorf("message %d: unknown sender %q", i, ev.From.Name)
+			}
+			toCol, ok := nameToCol[ev.To.Name]
+			if !ok {
+				return fmt.Errorf("message %d: unknown receiver %q", i, ev.To.Name)
+			}
+			msgCounter++
+			fill, fg := messageStyle(ev)
+			label := ev.Text
+			if g.Diagram.Autonumber {
+				label = fmt.Sprintf("%d. %s", msgCounter, label)
+			}
+			if label == "" {
+				label = " "
+			}
+			if err := g.addDirectionalArrow(fromCol, toCol, row, fmt.Sprintf("msg_%d", i), label, &lwA, fill, fg); err != nil {
+				return fmt.Errorf("message %d: %w", i, err)
+			}
+		case *ast.Note:
+			leftCol, ok := nameToCol[ev.Left.Name]
+			if !ok {
+				return fmt.Errorf("note %d: unknown participant %q", i, ev.Left.Name)
+			}
+			rightCol := leftCol
+			if ev.Right != ev.Left {
+				rightCol, ok = nameToCol[ev.Right.Name]
+				if !ok {
+					return fmt.Errorf("note %d: unknown participant %q", i, ev.Right.Name)
+				}
+			}
+			if err := g.addNote(ev, leftCol, rightCol, row, fmt.Sprintf("note_%d", i)); err != nil {
+				return fmt.Errorf("note %d: %w", i, err)
+			}
 		}
 	}
 
 	return nil
+}
+
+// addNote renders a note box at the given row.
+// Layout rules (lane cols: 2, 5, 8… stride=3, gap=2):
+//   - NoteLeft:  box sits in the 2 gap columns immediately left of the participant (col-2..col-1), anchored at col-2
+//   - NoteRight: box sits in the 2 gap columns immediately right of the participant, anchored at col+1
+//   - NoteOver:  box sits on the participant column(s), anchored at leftCol
+func (g *SequenceDrawing) addNote(n *ast.Note, leftCol, rightCol, row int, name string) error {
+	const noteH = 30
+	noteLW := arrowLinePt
+
+	var anchorCol, offsetX, width int
+	switch n.Position {
+	case ast.NoteLeft:
+		if leftCol > sequenceFirstLaneCol {
+			anchorCol = leftCol - sequenceGapColumns
+		} else {
+			anchorCol = 1
+		}
+		offsetX = 0
+		width = 88
+	case ast.NoteRight:
+		anchorCol = leftCol
+		offsetX = g.laneAnchorOffX(leftCol) + 4
+		width = 88
+	default: // NoteOver
+		anchorCol = leftCol
+		offsetX = 0
+		if leftCol == rightCol {
+			width = 88
+		} else {
+			w := 0
+			for c := leftCol; c <= rightCol; c++ {
+				w += g.colWidthPx(c)
+			}
+			width = w
+		}
+	}
+
+	colName, err := excelize.ColumnNumberToName(anchorCol)
+	if err != nil {
+		return err
+	}
+	cell := fmt.Sprintf("%s%d", colName, row)
+	_, r, err := excelize.CellNameToCoordinates(cell)
+	if err != nil {
+		return err
+	}
+	offY := g.arrowOffsetY(r, noteH)
+
+	return g.File.AddShape(g.Sheet, &excelize.Shape{
+		Cell:   cell,
+		Type:   "rect",
+		Width:  uint(width),
+		Height: noteH,
+		Line:   excelize.ShapeLine{Color: "D6B656", Width: &noteLW},
+		Fill:   excelize.Fill{Color: []string{"FFF2CC"}, Pattern: 1},
+		Paragraph: []excelize.RichTextRun{{
+			Text: n.Text,
+			Font: &excelize.Font{Size: 9, Color: "1F2A44", Family: "Calibri"},
+		}},
+		Format: excelize.GraphicOptions{Name: name, OffsetX: offsetX, OffsetY: offY},
+	})
 }

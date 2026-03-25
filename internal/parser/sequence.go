@@ -22,13 +22,13 @@ type sequenceParser struct {
 	title        string
 	autonumber   bool
 	participants []*ast.Participant
-	messages     []*ast.Message
+	events       []ast.SequenceEvent
 }
 
 func newSequenceParser() *sequenceParser {
 	return &sequenceParser{
 		participants: make([]*ast.Participant, 0),
-		messages:     make([]*ast.Message, 0),
+		events:       make([]ast.SequenceEvent, 0),
 	}
 }
 
@@ -134,6 +134,54 @@ func (p *sequenceParser) parseMessageLine(line string) (*ast.Message, error) {
 	return ast.NewMessage(fromPar, toPar, lineSt, arrowHd, kind, text), nil
 }
 
+// parseNoteLine supports:
+//
+//	note left of X: text
+//	note right of X: text
+//	note over X: text
+//	note over X,Y: text
+func (p *sequenceParser) parseNoteLine(line string) (*ast.Note, error) {
+	lower := strings.ToLower(line)
+	if !strings.HasPrefix(lower, "note ") {
+		return nil, nil
+	}
+	posText, text, ok := strings.Cut(line, ":")
+	if !ok {
+		return nil, fmt.Errorf("note missing colon separator: %q", line)
+	}
+	text = strings.TrimSpace(text)
+	posText = strings.TrimSpace(posText)
+	posLower := strings.ToLower(posText)
+
+	var pos ast.NotePosition
+	var target string
+	switch {
+	case strings.HasPrefix(posLower, "note left of "):
+		pos = ast.NoteLeft
+		target = strings.TrimSpace(posText[len("note left of "):])
+	case strings.HasPrefix(posLower, "note right of "):
+		pos = ast.NoteRight
+		target = strings.TrimSpace(posText[len("note right of "):])
+	case strings.HasPrefix(posLower, "note over "):
+		pos = ast.NoteOver
+		target = strings.TrimSpace(posText[len("note over "):])
+	default:
+		return nil, fmt.Errorf("unsupported note syntax: %q", line)
+	}
+
+	if target == "" {
+		return nil, fmt.Errorf("note missing participant: %q", line)
+	}
+
+	leftName, rightName, hasComma := strings.Cut(target, ",")
+	left := p.addParticipant(strings.TrimSpace(leftName))
+	right := left
+	if hasComma {
+		right = p.addParticipant(strings.TrimSpace(rightName))
+	}
+	return ast.NewNote(pos, left, right, text), nil
+}
+
 func (p *sequenceParser) parseLine(line string) error {
 	if strings.HasPrefix(strings.ToLower(line), "title ") {
 		p.title = strings.TrimSpace(line[len("title "):])
@@ -150,12 +198,21 @@ func (p *sequenceParser) parseLine(line string) error {
 		return nil
 	}
 
+	note, err := p.parseNoteLine(line)
+	if err != nil {
+		return err
+	}
+	if note != nil {
+		p.events = append(p.events, note)
+		return nil
+	}
+
 	msg, err := p.parseMessageLine(line)
 	if err != nil {
 		return err
 	}
 	if msg != nil {
-		p.messages = append(p.messages, msg)
+		p.events = append(p.events, msg)
 		return nil
 	}
 
@@ -163,5 +220,5 @@ func (p *sequenceParser) parseLine(line string) error {
 }
 
 func (p *sequenceParser) result() (ast.Diagram, error) {
-	return ast.NewSequenceDiagram(p.title, p.autonumber, p.participants, p.messages), nil
+	return ast.NewSequenceDiagram(p.title, p.autonumber, p.participants, p.events), nil
 }
