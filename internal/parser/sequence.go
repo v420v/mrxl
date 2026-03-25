@@ -20,6 +20,7 @@ var sequenceArrowSpecs = []struct {
 
 type sequenceParser struct {
 	title        string
+	autonumber   bool
 	participants []*ast.Participant
 	messages     []*ast.Message
 }
@@ -139,6 +140,11 @@ func (p *sequenceParser) parseLine(line string) error {
 		return nil
 	}
 
+	if strings.EqualFold(line, "autonumber") {
+		p.autonumber = true
+		return nil
+	}
+
 	if participant, ok := parseParticipantLine(line); ok {
 		p.addParticipant(participant)
 		return nil
@@ -157,5 +163,5 @@ func (p *sequenceParser) parseLine(line string) error {
 }
 
 func (p *sequenceParser) result() (ast.Diagram, error) {
-	return ast.NewSequenceDiagram(p.title, p.participants, p.messages), nil
+	return ast.NewSequenceDiagram(p.title, p.autonumber, p.participants, p.messages), nil
 }

@@ -347,6 +347,9 @@ func (g *SequenceDrawing) drawSequenceDiagram() error {
 		row := firstMessageRow + i*messageRowStep
 		fill, fg := messageStyle(msg)
 		label := msg.Text
+		if g.Diagram.Autonumber {
+			label = fmt.Sprintf("%d. %s", i+1, label)
+		}
 		if label == "" {
 			label = " "
 		}

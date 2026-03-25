@@ -2,12 +2,13 @@ package ast
 
 type SequenceDiagram struct {
 	Title        string
+	Autonumber   bool
 	Participants []*Participant
 	Messages     []*Message
 }
 
-func NewSequenceDiagram(title string, participants []*Participant, messages []*Message) Diagram {
-	return &SequenceDiagram{Title: title, Participants: participants, Messages: messages}
+func NewSequenceDiagram(title string, autonumber bool, participants []*Participant, messages []*Message) Diagram {
+	return &SequenceDiagram{Title: title, Autonumber: autonumber, Participants: participants, Messages: messages}
 }
 
 func (d *SequenceDiagram) Type() string {
