@@ -1,0 +1,15 @@
+# <type>: <short summary> (50 chars max)
+# │       │
+# │       └─ imperative mood, lowercase, no period
+# └─ type: add | fix | refactor | test | docs | chore
+
+# Body (optional, wrap at 72 chars)
+# Explain *why*, not what. What is already visible in the diff.
+
+# ── Types ────────────────────────────────────────────────────────────
+# add      new feature or file
+# fix      bug fix
+# refactor code change with no behaviour change
+# test     adding or updating tests
+# docs     documentation only
+# chore    build, deps, config, tooling
