@@ -7,6 +7,9 @@ A CLI tool that converts Mermaid diagrams into Excel (`.xlsx`) files.
 [![Build Check](https://github.com/v420v/mrxl/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/v420v/mrxl/actions/workflows/build.yml) [![Go Version](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go)](https://go.dev/) [![codecov](https://codecov.io/gh/v420v/mrxl/graph/badge.svg)](https://codecov.io/gh/v420v/mrxl)
 
 ## Features
+
+✅ Full support · ⚠️ Partial support · ❌ Not yet implemented
+
 | Name | Status |
 |---------|--------|
 | Sequence Diagram | ⚠️ |
