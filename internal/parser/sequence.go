@@ -85,10 +85,10 @@ func parseParticipantLine(line string) (id string, ok bool) {
 	return fields[0], true
 }
 
-func (p *sequenceParser) parseMessageLine(line string) (*ast.Message, error) {
+func (p *sequenceParser) parseMessageLine(line string) (*ast.Message, *ast.Activation, error) {
 	head, rest, ok := strings.Cut(line, ":")
 	if !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
 	head = strings.TrimSpace(head)
 	text := strings.TrimSpace(rest)
@@ -107,7 +107,7 @@ func (p *sequenceParser) parseMessageLine(line string) (*ast.Message, error) {
 		from = strings.TrimSpace(head[:idx])
 		after := strings.TrimSpace(head[idx+len(spec.token):])
 		if after == "" {
-			return nil, fmt.Errorf("missing target participant in %q", line)
+			return nil, nil, fmt.Errorf("missing target participant in %q", line)
 		}
 		to = after
 		lineSt = spec.line
@@ -116,11 +116,21 @@ func (p *sequenceParser) parseMessageLine(line string) (*ast.Message, error) {
 		break
 	}
 	if !found {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	if from == "" || to == "" {
-		return nil, fmt.Errorf("invalid message %q", line)
+		return nil, nil, fmt.Errorf("invalid message %q", line)
+	}
+
+	// Handle +/- activation shorthand on the target (e.g. A->>+B or A-->>-B).
+	var activation *ast.Activation
+	if strings.HasPrefix(to, "+") {
+		to = to[1:]
+		activation = ast.NewActivation(p.addParticipant(to), true)
+	} else if strings.HasPrefix(to, "-") {
+		to = to[1:]
+		activation = ast.NewActivation(p.addParticipant(to), false)
 	}
 
 	fromPar := p.addParticipant(from)
@@ -131,7 +141,7 @@ func (p *sequenceParser) parseMessageLine(line string) (*ast.Message, error) {
 		kind = ast.KindReturn
 	}
 
-	return ast.NewMessage(fromPar, toPar, lineSt, arrowHd, kind, text), nil
+	return ast.NewMessage(fromPar, toPar, lineSt, arrowHd, kind, text), activation, nil
 }
 
 // parseNoteLine supports:
@@ -198,6 +208,18 @@ func (p *sequenceParser) parseLine(line string) error {
 		return nil
 	}
 
+	lower := strings.ToLower(line)
+	if strings.HasPrefix(lower, "activate ") {
+		name := strings.TrimSpace(line[len("activate "):])
+		p.events = append(p.events, ast.NewActivation(p.addParticipant(name), true))
+		return nil
+	}
+	if strings.HasPrefix(lower, "deactivate ") {
+		name := strings.TrimSpace(line[len("deactivate "):])
+		p.events = append(p.events, ast.NewActivation(p.addParticipant(name), false))
+		return nil
+	}
+
 	note, err := p.parseNoteLine(line)
 	if err != nil {
 		return err
@@ -207,12 +229,15 @@ func (p *sequenceParser) parseLine(line string) error {
 		return nil
 	}
 
-	msg, err := p.parseMessageLine(line)
+	msg, activation, err := p.parseMessageLine(line)
 	if err != nil {
 		return err
 	}
 	if msg != nil {
 		p.events = append(p.events, msg)
+		if activation != nil {
+			p.events = append(p.events, activation)
+		}
 		return nil
 	}
 

@@ -335,10 +335,17 @@ func (g *SequenceDrawing) drawSequenceDiagram() error {
 		}
 	}
 
+	// Draw activation boxes before arrows so they appear behind.
+	if err := g.drawActivations(nameToCol, lifelineEndRow); err != nil {
+		return err
+	}
+
 	msgCounter := 0
 	for i, event := range g.Diagram.Events {
 		row := firstMessageRow + i*messageRowStep
 		switch ev := event.(type) {
+		case *ast.Activation:
+			// handled by drawActivations above
 		case *ast.Message:
 			fromCol, ok := nameToCol[ev.From.Name]
 			if !ok {
@@ -378,6 +385,99 @@ func (g *SequenceDrawing) drawSequenceDiagram() error {
 		}
 	}
 
+	return nil
+}
+
+type activationSpan struct {
+	col      int
+	startRow int
+	endRow   int
+	depth    int // nesting depth (0 = outermost)
+}
+
+// computeActivationSpans walks events and returns a span for each matched activate/deactivate pair.
+// Unclosed activations are closed at lifelineEndRow.
+func computeActivationSpans(events []ast.SequenceEvent, nameToCol map[string]int, lifelineEndRow int) []activationSpan {
+	type stackEntry struct{ startRow, depth int }
+	stacks := make(map[int][]stackEntry) // col -> stack
+	var spans []activationSpan
+
+	for i, ev := range events {
+		act, ok := ev.(*ast.Activation)
+		if !ok {
+			continue
+		}
+		col, exists := nameToCol[act.Participant.Name]
+		if !exists {
+			continue
+		}
+		row := firstMessageRow + i*messageRowStep
+		if act.Active {
+			depth := len(stacks[col])
+			stacks[col] = append(stacks[col], stackEntry{row, depth})
+		} else {
+			stk := stacks[col]
+			if len(stk) > 0 {
+				top := stk[len(stk)-1]
+				stacks[col] = stk[:len(stk)-1]
+				spans = append(spans, activationSpan{col, top.startRow, row, top.depth})
+			}
+		}
+	}
+	// Close any unclosed activations.
+	for col, stk := range stacks {
+		for len(stk) > 0 {
+			top := stk[len(stk)-1]
+			stk = stk[:len(stk)-1]
+			spans = append(spans, activationSpan{col, top.startRow, lifelineEndRow, top.depth})
+		}
+		_ = col
+	}
+	return spans
+}
+
+func (g *SequenceDrawing) drawActivations(nameToCol map[string]int, lifelineEndRow int) error {
+	spans := computeActivationSpans(g.Diagram.Events, nameToCol, lifelineEndRow)
+	const (
+		activationW = 10
+		lifelineW   = 5
+		depthOffset = 4
+	)
+	activLW := 0.5
+	for i, span := range spans {
+		colName, err := excelize.ColumnNumberToName(span.col)
+		if err != nil {
+			return err
+		}
+		cell := fmt.Sprintf("%s%d", colName, span.startRow)
+		h := g.sumRowHeightsPx(span.startRow, span.endRow)
+		if h < 4 {
+			h = 4
+		}
+		centerX := g.laneAnchorOffX(span.col) + lifelineW/2
+		offX := centerX - activationW/2 + span.depth*depthOffset
+		if offX < 0 {
+			offX = 0
+		}
+		if err := g.File.AddShape(g.Sheet, &excelize.Shape{
+			Cell:   cell,
+			Type:   "rect",
+			Width:  activationW,
+			Height: uint(h),
+			Line:   excelize.ShapeLine{Color: "2F5597", Width: &activLW},
+			Fill:   excelize.Fill{Color: []string{"BDD7EE"}, Pattern: 1},
+			Paragraph: []excelize.RichTextRun{{
+				Text: " ",
+				Font: &excelize.Font{Size: 1},
+			}},
+			Format: excelize.GraphicOptions{
+				Name:    fmt.Sprintf("act_%d", i),
+				OffsetX: offX,
+			},
+		}); err != nil {
+			return fmt.Errorf("activation span %d: %w", i, err)
+		}
+	}
 	return nil
 }
 

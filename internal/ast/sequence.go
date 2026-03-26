@@ -15,7 +15,7 @@ func (d *SequenceDiagram) Type() string {
 	return "sequence"
 }
 
-// SequenceEvent is either a *Message or a *Note.
+// SequenceEvent is a *Message, *Note, or *Activation.
 type SequenceEvent interface {
 	isSequenceEvent()
 }
@@ -98,3 +98,15 @@ func NewNote(pos NotePosition, left, right *Participant, text string) *Note {
 }
 
 func (n *Note) isSequenceEvent() {}
+
+// Activation represents an activate or deactivate event for a participant.
+type Activation struct {
+	Participant *Participant
+	Active      bool // true = activate, false = deactivate
+}
+
+func NewActivation(p *Participant, active bool) *Activation {
+	return &Activation{Participant: p, Active: active}
+}
+
+func (a *Activation) isSequenceEvent() {}
