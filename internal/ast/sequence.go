@@ -110,3 +110,25 @@ func NewActivation(p *Participant, active bool) *Activation {
 }
 
 func (a *Activation) isSequenceEvent() {}
+
+// InteractionBranch is one labelled section within an InteractionBlock.
+type InteractionBranch struct {
+	Label  string
+	Events []SequenceEvent
+}
+
+func NewInteractionBranch(label string) *InteractionBranch {
+	return &InteractionBranch{Label: label, Events: make([]SequenceEvent, 0)}
+}
+
+// InteractionBlock represents a loop / alt / opt / break group.
+type InteractionBlock struct {
+	Kind     string // "loop", "alt", "opt", "break"
+	Branches []*InteractionBranch
+}
+
+func NewInteractionBlock(kind string, branches []*InteractionBranch) *InteractionBlock {
+	return &InteractionBlock{Kind: kind, Branches: branches}
+}
+
+func (b *InteractionBlock) isSequenceEvent() {}

@@ -1,9 +1,26 @@
 sequenceDiagram
+  autonumber
   participant User
   participant Server
-  participant DATABASE
+  participant DB
 
-  User->>+Server: Request
-  Server->>+DATABASE: Query
-  DATABASE-->>-Server: Response
-  Server-->>-User: Response
+  alt Valid credentials
+    User->>+Server: Login
+    Server->>+DB: Query user
+    DB-->>-Server: User record
+    Server-->>-User: 200 OK
+  else Invalid credentials
+    User->>Server: Login
+    Server-->>User: 401 Unauthorized
+  end
+
+  opt Session active
+    loop Every 30s
+      Server->>DB: Ping
+      DB-->>Server: Pong
+    end
+  end
+
+  break Server overloaded
+    Server-->>User: 503 Retry later
+  end

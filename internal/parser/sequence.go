@@ -18,17 +18,42 @@ var sequenceArrowSpecs = []struct {
 	{"->", ast.LineSolid, ast.ArrowOpen},
 }
 
+type blockFrame struct {
+	kind     string
+	branches []*ast.InteractionBranch
+	current  *ast.InteractionBranch
+}
+
+func newBlockFrame(kind, label string) *blockFrame {
+	branch := ast.NewInteractionBranch(label)
+	return &blockFrame{
+		kind:     kind,
+		branches: []*ast.InteractionBranch{branch},
+		current:  branch,
+	}
+}
+
 type sequenceParser struct {
 	title        string
 	autonumber   bool
 	participants []*ast.Participant
 	events       []ast.SequenceEvent
+	blockStack   []*blockFrame
 }
 
 func newSequenceParser() *sequenceParser {
 	return &sequenceParser{
 		participants: make([]*ast.Participant, 0),
 		events:       make([]ast.SequenceEvent, 0),
+	}
+}
+
+func (p *sequenceParser) addEvent(ev ast.SequenceEvent) {
+	if len(p.blockStack) > 0 {
+		top := p.blockStack[len(p.blockStack)-1]
+		top.current.Events = append(top.current.Events, ev)
+	} else {
+		p.events = append(p.events, ev)
 	}
 }
 
@@ -193,13 +218,43 @@ func (p *sequenceParser) parseNoteLine(line string) (*ast.Note, error) {
 }
 
 func (p *sequenceParser) parseLine(line string) error {
-	if strings.HasPrefix(strings.ToLower(line), "title ") {
+	lower := strings.ToLower(line)
+
+	if strings.HasPrefix(lower, "title ") {
 		p.title = strings.TrimSpace(line[len("title "):])
 		return nil
 	}
-
 	if strings.EqualFold(line, "autonumber") {
 		p.autonumber = true
+		return nil
+	}
+
+	// Interaction block keywords
+	for _, kw := range []string{"loop", "alt", "opt", "break"} {
+		if lower == kw || strings.HasPrefix(lower, kw+" ") {
+			label := strings.TrimSpace(line[len(kw):])
+			p.blockStack = append(p.blockStack, newBlockFrame(kw, label))
+			return nil
+		}
+	}
+	if lower == "else" || strings.HasPrefix(lower, "else ") {
+		if len(p.blockStack) == 0 {
+			return fmt.Errorf("unexpected 'else' outside interaction block")
+		}
+		label := strings.TrimSpace(line[4:])
+		top := p.blockStack[len(p.blockStack)-1]
+		branch := ast.NewInteractionBranch(label)
+		top.branches = append(top.branches, branch)
+		top.current = branch
+		return nil
+	}
+	if strings.EqualFold(line, "end") {
+		if len(p.blockStack) == 0 {
+			return fmt.Errorf("unexpected 'end' outside interaction block")
+		}
+		frame := p.blockStack[len(p.blockStack)-1]
+		p.blockStack = p.blockStack[:len(p.blockStack)-1]
+		p.addEvent(ast.NewInteractionBlock(frame.kind, frame.branches))
 		return nil
 	}
 
@@ -207,16 +262,14 @@ func (p *sequenceParser) parseLine(line string) error {
 		p.addParticipant(participant)
 		return nil
 	}
-
-	lower := strings.ToLower(line)
 	if strings.HasPrefix(lower, "activate ") {
 		name := strings.TrimSpace(line[len("activate "):])
-		p.events = append(p.events, ast.NewActivation(p.addParticipant(name), true))
+		p.addEvent(ast.NewActivation(p.addParticipant(name), true))
 		return nil
 	}
 	if strings.HasPrefix(lower, "deactivate ") {
 		name := strings.TrimSpace(line[len("deactivate "):])
-		p.events = append(p.events, ast.NewActivation(p.addParticipant(name), false))
+		p.addEvent(ast.NewActivation(p.addParticipant(name), false))
 		return nil
 	}
 
@@ -225,7 +278,7 @@ func (p *sequenceParser) parseLine(line string) error {
 		return err
 	}
 	if note != nil {
-		p.events = append(p.events, note)
+		p.addEvent(note)
 		return nil
 	}
 
@@ -234,9 +287,9 @@ func (p *sequenceParser) parseLine(line string) error {
 		return err
 	}
 	if msg != nil {
-		p.events = append(p.events, msg)
+		p.addEvent(msg)
 		if activation != nil {
-			p.events = append(p.events, activation)
+			p.addEvent(activation)
 		}
 		return nil
 	}
@@ -245,5 +298,8 @@ func (p *sequenceParser) parseLine(line string) error {
 }
 
 func (p *sequenceParser) result() (ast.Diagram, error) {
+	if len(p.blockStack) > 0 {
+		return nil, fmt.Errorf("unclosed interaction block: %q", p.blockStack[len(p.blockStack)-1].kind)
+	}
 	return ast.NewSequenceDiagram(p.title, p.autonumber, p.participants, p.events), nil
 }

@@ -93,14 +93,168 @@ func applySequenceColumnWidths(f *excelize.File, sheet string, laneCols []int) e
 	return nil
 }
 
-// requiredRowCount returns the row count to use for row heights given the diagram.
-func requiredRowCount(d *ast.SequenceDiagram) int {
-	if d == nil || len(d.Events) == 0 {
-		return 15
+type elseInfo struct {
+	label    string
+	startRow int
+}
+
+type blockRenderInfo struct {
+	kind     string
+	label    string
+	startRow int
+	afterRow int // exclusive upper bound (first row after the block)
+	depth    int // nesting depth (0 = outermost)
+	elses    []elseInfo
+}
+
+func collectLeafRows(events []ast.SequenceEvent, nextRow *int) (map[ast.SequenceEvent]int, []blockRenderInfo) {
+	rowMap := make(map[ast.SequenceEvent]int)
+	var blocks []blockRenderInfo
+	collectLeafRowsInto(events, nextRow, rowMap, &blocks, 0)
+	return rowMap, blocks
+}
+
+func collectLeafRowsInto(events []ast.SequenceEvent, nextRow *int, rowMap map[ast.SequenceEvent]int, blocks *[]blockRenderInfo, depth int) {
+	for _, ev := range events {
+		blk, ok := ev.(*ast.InteractionBlock)
+		if !ok {
+			rowMap[ev] = *nextRow
+			*nextRow += messageRowStep
+			continue
+		}
+		startRow := *nextRow
+		blockIdx := len(*blocks)
+		*blocks = append(*blocks, blockRenderInfo{kind: blk.Kind, label: blk.Branches[0].Label, startRow: startRow, depth: depth})
+		var elses []elseInfo
+		for bi, branch := range blk.Branches {
+			if bi > 0 {
+				elses = append(elses, elseInfo{branch.Label, *nextRow})
+			}
+			collectLeafRowsInto(branch.Events, nextRow, rowMap, blocks, depth+1)
+		}
+		if *nextRow == startRow {
+			*nextRow += messageRowStep // ensure non-zero height for empty block
+		}
+		(*blocks)[blockIdx].afterRow = *nextRow
+		(*blocks)[blockIdx].elses = elses
 	}
-	lastEvent := firstMessageRow + (len(d.Events)-1)*messageRowStep
-	end := max(lastEvent+3, 10)
-	return end + 2
+}
+
+var blockStyleMap = map[string][2]string{
+	"loop":  {"4472C4", "EBF0F8"},
+	"alt":   {"70AD47", "EBF5E4"},
+	"opt":   {"ED7D31", "FEF2EA"},
+	"break": {"C00000", "FCE4D6"},
+}
+
+func blockStyle(kind string) (border, fill string) {
+	if s, ok := blockStyleMap[kind]; ok {
+		return s[0], s[1]
+	}
+	return "595959", "F2F2F2"
+}
+
+func (g *SequenceDrawing) totalWidthPx(totalCols int) int {
+	w := 0
+	for c := 1; c <= totalCols; c++ {
+		w += g.colWidthPx(c)
+	}
+	return w
+}
+
+func (g *SequenceDrawing) drawBlocks(blocks []blockRenderInfo, totalCols int) error {
+	bw := g.totalWidthPx(totalCols)
+	borderLW := 1.0
+	labelLW := 0.5
+	colName, _ := excelize.ColumnNumberToName(1)
+
+	// Phase 1: all background rectangles (outer first → inner on top in z-order).
+	for i, b := range blocks {
+		border, fill := blockStyle(b.kind)
+		cell := fmt.Sprintf("%s%d", colName, b.startRow)
+		h := g.sumRowHeightsPx(b.startRow, b.afterRow-1)
+		if h < 8 {
+			h = 8
+		}
+		if err := g.File.AddShape(g.Sheet, &excelize.Shape{
+			Cell:   cell,
+			Type:   "rect",
+			Width:  uint(bw),
+			Height: uint(h),
+			Line:   excelize.ShapeLine{Color: border, Width: &borderLW},
+			Fill:   excelize.Fill{Color: []string{fill}, Pattern: 1},
+			Paragraph: []excelize.RichTextRun{{Text: " ", Font: &excelize.Font{Size: 1}}},
+			Format: excelize.GraphicOptions{Name: fmt.Sprintf("blk_bg_%d", i)},
+		}); err != nil {
+			return fmt.Errorf("block %q background: %w", b.kind, err)
+		}
+	}
+
+	// Phase 2: all labels and separators on top of every background.
+	// Labels are offset vertically by depth so nested labels don't overlap.
+	for i, b := range blocks {
+		border, fill := blockStyle(b.kind)
+		cell := fmt.Sprintf("%s%d", colName, b.startRow)
+		labelOffY := 2 + b.depth*20
+
+		kindLabel := fmt.Sprintf("[%s]", b.kind)
+		if b.label != "" {
+			kindLabel = fmt.Sprintf("[%s] %s", b.kind, b.label)
+		}
+		labelW := min(bw-4, 160)
+		if err := g.File.AddShape(g.Sheet, &excelize.Shape{
+			Cell:   cell,
+			Type:   "rect",
+			Width:  uint(labelW),
+			Height: 18,
+			Line:   excelize.ShapeLine{Color: border, Width: &labelLW},
+			Fill:   excelize.Fill{Color: []string{border}, Pattern: 1},
+			Paragraph: []excelize.RichTextRun{{
+				Text: kindLabel,
+				Font: &excelize.Font{Bold: true, Size: 8, Color: "FFFFFF", Family: "Calibri"},
+			}},
+			Format: excelize.GraphicOptions{Name: fmt.Sprintf("blk_lbl_%d", i), OffsetX: 2, OffsetY: labelOffY},
+		}); err != nil {
+			return fmt.Errorf("block %q label: %w", b.kind, err)
+		}
+
+		for j, el := range b.elses {
+			elseCell := fmt.Sprintf("%s%d", colName, el.startRow)
+			sepLW := 0.75
+			if err := g.File.AddShape(g.Sheet, &excelize.Shape{
+				Cell:   elseCell,
+				Type:   "rect",
+				Width:  uint(bw),
+				Height: 2,
+				Line:   excelize.ShapeLine{Color: border, Width: &sepLW},
+				Fill:   excelize.Fill{Color: []string{border}, Pattern: 1},
+				Paragraph: []excelize.RichTextRun{{Text: " ", Font: &excelize.Font{Size: 1}}},
+				Format: excelize.GraphicOptions{Name: fmt.Sprintf("blk_sep_%d_%d", i, j)},
+			}); err != nil {
+				return fmt.Errorf("block %q else separator: %w", b.kind, err)
+			}
+			elseLabel := "[else]"
+			if el.label != "" {
+				elseLabel = fmt.Sprintf("[else] %s", el.label)
+			}
+			if err := g.File.AddShape(g.Sheet, &excelize.Shape{
+				Cell:   elseCell,
+				Type:   "rect",
+				Width:  uint(min(bw-4, 140)),
+				Height: 16,
+				Line:   excelize.ShapeLine{Color: border, Width: &labelLW},
+				Fill:   excelize.Fill{Color: []string{fill}, Pattern: 1},
+				Paragraph: []excelize.RichTextRun{{
+					Text: elseLabel,
+					Font: &excelize.Font{Italic: true, Size: 8, Color: border, Family: "Calibri"},
+				}},
+				Format: excelize.GraphicOptions{Name: fmt.Sprintf("blk_else_%d_%d", i, j), OffsetX: 4, OffsetY: 3},
+			}); err != nil {
+				return fmt.Errorf("block %q else label: %w", b.kind, err)
+			}
+		}
+	}
+	return nil
 }
 
 func (g *SequenceDrawing) sumRowHeightsPx(fromRow, toRow int) int {
@@ -225,12 +379,15 @@ func (g *SequenceDrawing) drawSequenceDiagram() error {
 	if err != nil {
 		return err
 	}
-
 	if err := applySequenceColumnWidths(g.File, g.Sheet, laneCols); err != nil {
 		return err
 	}
 
-	nRows := requiredRowCount(g.Diagram)
+	// Assign rows to all leaf events and collect block render info.
+	nextRow := firstMessageRow
+	rowMap, blockInfos := collectLeafRows(g.Diagram.Events, &nextRow)
+
+	nRows := max(nextRow+5, firstMessageRow+10)
 	for row := 1; row <= nRows; row++ {
 		h := 22.0
 		if row == 2 {
@@ -284,15 +441,18 @@ func (g *SequenceDrawing) drawSequenceDiagram() error {
 	lwL := lifelineLine
 	lwA := arrowLinePt
 
-	lastMsgRow := firstMessageRow
-	if len(g.Diagram.Events) > 0 {
-		lastMsgRow = firstMessageRow + (len(g.Diagram.Events)-1)*messageRowStep
+	lastEventRow := nextRow - messageRowStep
+	if lastEventRow < firstMessageRow {
+		lastEventRow = firstMessageRow
 	}
-	lifelineEndRow := lastMsgRow + 3
-	if lifelineEndRow < 10 {
-		lifelineEndRow = 10
-	}
+	lifelineEndRow := max(lastEventRow+3, 10)
 	lifelineH := g.sumRowHeightsPx(3, lifelineEndRow)
+
+	// Draw block backgrounds first so all other shapes render on top.
+	totalCols := sequenceSheetColumnCount(len(g.Diagram.Participants))
+	if err := g.drawBlocks(blockInfos, totalCols); err != nil {
+		return err
+	}
 
 	for i, p := range g.Diagram.Participants {
 		colNum := laneCols[i]
@@ -335,57 +495,68 @@ func (g *SequenceDrawing) drawSequenceDiagram() error {
 		}
 	}
 
-	// Draw activation boxes before arrows so they appear behind.
-	if err := g.drawActivations(nameToCol, lifelineEndRow); err != nil {
+	if err := g.drawActivations(nameToCol, rowMap, lifelineEndRow); err != nil {
 		return err
 	}
 
-	msgCounter := 0
-	for i, event := range g.Diagram.Events {
-		row := firstMessageRow + i*messageRowStep
-		switch ev := event.(type) {
-		case *ast.Activation:
-			// handled by drawActivations above
-		case *ast.Message:
-			fromCol, ok := nameToCol[ev.From.Name]
-			if !ok {
-				return fmt.Errorf("message %d: unknown sender %q", i, ev.From.Name)
-			}
-			toCol, ok := nameToCol[ev.To.Name]
-			if !ok {
-				return fmt.Errorf("message %d: unknown receiver %q", i, ev.To.Name)
-			}
-			msgCounter++
-			fill, fg := messageStyle(ev)
-			label := ev.Text
-			if g.Diagram.Autonumber {
-				label = fmt.Sprintf("%d. %s", msgCounter, label)
-			}
-			if label == "" {
-				label = " "
-			}
-			if err := g.addDirectionalArrow(fromCol, toCol, row, fmt.Sprintf("msg_%d", i), label, &lwA, fill, fg); err != nil {
-				return fmt.Errorf("message %d: %w", i, err)
-			}
-		case *ast.Note:
-			leftCol, ok := nameToCol[ev.Left.Name]
-			if !ok {
-				return fmt.Errorf("note %d: unknown participant %q", i, ev.Left.Name)
-			}
-			rightCol := leftCol
-			if ev.Right != ev.Left {
-				rightCol, ok = nameToCol[ev.Right.Name]
-				if !ok {
-					return fmt.Errorf("note %d: unknown participant %q", i, ev.Right.Name)
+	shapeIdx := 0
+	var drawEvents func([]ast.SequenceEvent) error
+	drawEvents = func(events []ast.SequenceEvent) error {
+		for _, event := range events {
+			switch ev := event.(type) {
+			case *ast.InteractionBlock:
+				for _, branch := range ev.Branches {
+					if err := drawEvents(branch.Events); err != nil {
+						return err
+					}
 				}
-			}
-			if err := g.addNote(ev, leftCol, rightCol, row, fmt.Sprintf("note_%d", i)); err != nil {
-				return fmt.Errorf("note %d: %w", i, err)
+			case *ast.Activation:
+				// handled by drawActivations
+			case *ast.Message:
+				row := rowMap[ev]
+				fromCol, ok := nameToCol[ev.From.Name]
+				if !ok {
+					return fmt.Errorf("message: unknown sender %q", ev.From.Name)
+				}
+				toCol, ok := nameToCol[ev.To.Name]
+				if !ok {
+					return fmt.Errorf("message: unknown receiver %q", ev.To.Name)
+				}
+				fill, fg := messageStyle(ev)
+				label := ev.Text
+				if g.Diagram.Autonumber {
+					shapeIdx++
+					label = fmt.Sprintf("%d. %s", shapeIdx, label)
+				}
+				if label == "" {
+					label = " "
+				}
+				if err := g.addDirectionalArrow(fromCol, toCol, row, fmt.Sprintf("msg_%d", shapeIdx), label, &lwA, fill, fg); err != nil {
+					return fmt.Errorf("message: %w", err)
+				}
+				shapeIdx++
+			case *ast.Note:
+				row := rowMap[ev]
+				leftCol, ok := nameToCol[ev.Left.Name]
+				if !ok {
+					return fmt.Errorf("note: unknown participant %q", ev.Left.Name)
+				}
+				rightCol := leftCol
+				if ev.Right != ev.Left {
+					rightCol, ok = nameToCol[ev.Right.Name]
+					if !ok {
+						return fmt.Errorf("note: unknown participant %q", ev.Right.Name)
+					}
+				}
+				if err := g.addNote(ev, leftCol, rightCol, row, fmt.Sprintf("note_%d", shapeIdx)); err != nil {
+					return fmt.Errorf("note: %w", err)
+				}
+				shapeIdx++
 			}
 		}
+		return nil
 	}
-
-	return nil
+	return drawEvents(g.Diagram.Events)
 }
 
 type activationSpan struct {
@@ -397,33 +568,44 @@ type activationSpan struct {
 
 // computeActivationSpans walks events and returns a span for each matched activate/deactivate pair.
 // Unclosed activations are closed at lifelineEndRow.
-func computeActivationSpans(events []ast.SequenceEvent, nameToCol map[string]int, lifelineEndRow int) []activationSpan {
+func computeActivationSpans(events []ast.SequenceEvent, nameToCol map[string]int, rowMap map[ast.SequenceEvent]int, lifelineEndRow int) []activationSpan {
 	type stackEntry struct{ startRow, depth int }
 	stacks := make(map[int][]stackEntry) // col -> stack
 	var spans []activationSpan
 
-	for i, ev := range events {
-		act, ok := ev.(*ast.Activation)
-		if !ok {
-			continue
-		}
-		col, exists := nameToCol[act.Participant.Name]
-		if !exists {
-			continue
-		}
-		row := firstMessageRow + i*messageRowStep
-		if act.Active {
-			depth := len(stacks[col])
-			stacks[col] = append(stacks[col], stackEntry{row, depth})
-		} else {
-			stk := stacks[col]
-			if len(stk) > 0 {
-				top := stk[len(stk)-1]
-				stacks[col] = stk[:len(stk)-1]
-				spans = append(spans, activationSpan{col, top.startRow, row, top.depth})
+	var walk func([]ast.SequenceEvent)
+	walk = func(evs []ast.SequenceEvent) {
+		for _, ev := range evs {
+			switch e := ev.(type) {
+			case *ast.InteractionBlock:
+				for _, branch := range e.Branches {
+					walk(branch.Events)
+				}
+			case *ast.Activation:
+				row, ok := rowMap[e]
+				if !ok {
+					continue
+				}
+				col, exists := nameToCol[e.Participant.Name]
+				if !exists {
+					continue
+				}
+				if e.Active {
+					depth := len(stacks[col])
+					stacks[col] = append(stacks[col], stackEntry{row, depth})
+				} else {
+					stk := stacks[col]
+					if len(stk) > 0 {
+						top := stk[len(stk)-1]
+						stacks[col] = stk[:len(stk)-1]
+						spans = append(spans, activationSpan{col, top.startRow, row, top.depth})
+					}
+				}
 			}
 		}
 	}
+	walk(events)
+
 	// Close any unclosed activations.
 	for col, stk := range stacks {
 		for len(stk) > 0 {
@@ -431,13 +613,12 @@ func computeActivationSpans(events []ast.SequenceEvent, nameToCol map[string]int
 			stk = stk[:len(stk)-1]
 			spans = append(spans, activationSpan{col, top.startRow, lifelineEndRow, top.depth})
 		}
-		_ = col
 	}
 	return spans
 }
 
-func (g *SequenceDrawing) drawActivations(nameToCol map[string]int, lifelineEndRow int) error {
-	spans := computeActivationSpans(g.Diagram.Events, nameToCol, lifelineEndRow)
+func (g *SequenceDrawing) drawActivations(nameToCol map[string]int, rowMap map[ast.SequenceEvent]int, lifelineEndRow int) error {
+	spans := computeActivationSpans(g.Diagram.Events, nameToCol, rowMap, lifelineEndRow)
 	const (
 		activationW = 10
 		lifelineW   = 5
