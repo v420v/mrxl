@@ -53,6 +53,9 @@ func (g *QuadrantDrawing) drawQuadrantChart() error {
 	vDiv2 := n + 4 // vertical divider point 2:   (0.5, 1.0)
 	hDiv1 := n + 5 // horizontal divider point 1: (0.0, 0.5)
 	hDiv2 := n + 6 // horizontal divider point 2: (1.0, 0.5)
+	// Quadrant label phantom points (rows n+7 … n+10); one point per quadrant.
+	// Placed at the centre of each quadrant so ShowSerName renders the label there.
+	qLabelBase := n + 7
 
 	type xy struct{ x, y float64 }
 	divPts := []struct {
@@ -75,9 +78,37 @@ func (g *QuadrantDrawing) drawQuadrantChart() error {
 		}
 	}
 
+	// --- Quadrant label phantom points ---
+	// Each quadrant label is a single phantom point at the quadrant centre.
+	// Q1=top-right, Q2=top-left, Q3=bottom-left, Q4=bottom-right.
+	type qLabel struct {
+		text string
+		x, y float64
+	}
+	qLabels := []qLabel{
+		{d.Quadrant1, 0.75, 0.75},
+		{d.Quadrant2, 0.25, 0.75},
+		{d.Quadrant3, 0.25, 0.25},
+		{d.Quadrant4, 0.75, 0.25},
+	}
+	for i, ql := range qLabels {
+		if ql.text == "" {
+			continue
+		}
+		row := qLabelBase + i
+		xCell, _ := excelize.CoordinatesToCellName(2, row)
+		yCell, _ := excelize.CoordinatesToCellName(3, row)
+		if err := f.SetCellValue(g.Sheet, xCell, ql.x); err != nil {
+			return fmt.Errorf("quadrant label x row %d: %w", row, err)
+		}
+		if err := f.SetCellValue(g.Sheet, yCell, ql.y); err != nil {
+			return fmt.Errorf("quadrant label y row %d: %w", row, err)
+		}
+	}
+
 	// --- Build chart series ---
 	// One series per data point so ShowSerName labels each point.
-	series := make([]excelize.ChartSeries, 0, n+2)
+	series := make([]excelize.ChartSeries, 0, n+2+len(qLabels))
 	for i := range d.Points {
 		row := i + 2
 		series = append(series, excelize.ChartSeries{
@@ -112,6 +143,21 @@ func (g *QuadrantDrawing) drawQuadrantChart() error {
 			Marker:     noMarker,
 		},
 	)
+
+	// Quadrant label series: phantom points with no marker; ShowSerName renders the label.
+	for i, ql := range qLabels {
+		if ql.text == "" {
+			continue
+		}
+		row := qLabelBase + i
+		series = append(series, excelize.ChartSeries{
+			Name:       ql.text,
+			Categories: fmt.Sprintf("%s!$B$%d:$B$%d", g.Sheet, row, row),
+			Values:     fmt.Sprintf("%s!$C$%d:$C$%d", g.Sheet, row, row),
+			Line:       excelize.ChartLine{Type: excelize.ChartLineNone},
+			Marker:     noMarker,
+		})
+	}
 
 	minVal := 0.0
 	maxVal := 1.0
