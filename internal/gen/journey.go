@@ -3,6 +3,7 @@ package gen
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 
 	"github.com/v420v/mrxl/internal/ast"
@@ -10,11 +11,12 @@ import (
 )
 
 const (
-	journeyFirstTaskColIdx = 2   // column index (1-based) of first task lane
-	journeyTaskStride      = 2   // one wide task col + one narrow gap col per slot
-	journeyTaskColWidth    = 14.0
-	journeyGapColWidth_    = 2.0
-	journeyMarginColWidth_ = 2.0
+	journeyFirstTaskColIdx    = 2    // column index (1-based) of first task lane
+	journeyTaskStride         = 2    // one wide task col + one narrow gap col per slot
+	journeyTaskColWidth       = 14.0
+	journeyGapColWidth_       = 2.0
+	journeyMarginColWidth_    = 2.0
+	journeyActorLabelColWidth = 12.0 // column 1 width when actors are present
 
 	// row indices (1-based)
 	journeyTitleRow   = 1
@@ -23,7 +25,7 @@ const (
 	journeyTaskRow    = 4
 	journeyArrowRow   = 5
 	journeyScoreRow   = 6
-	journeyBottomRow  = 7
+	// actor rows start at journeyScoreRow+1 and are computed dynamically
 
 	// row heights in Excel pt units
 	journeyTitlePt   = 28.0
@@ -32,11 +34,13 @@ const (
 	journeyTaskPt    = 40.0
 	journeyArrowPt   = 24.0
 	journeyScorePt   = 40.0
+	journeyActorPt   = 30.0
 	journeyBottomPt  = 24.0
 
 	// shape heights in pixels
 	journeySectionBoxH = 36
 	journeySlotBoxH    = 36
+	journeyActorBoxH   = 22
 	journeyArrowShapeH = 12
 	journeyConnW_      = 2
 )
@@ -108,6 +112,23 @@ func (g *JourneyDrawing) drawUserJourney() error {
 		return fmt.Errorf("user journey: no tasks")
 	}
 
+	// Collect unique actors in order of first appearance.
+	var actorOrder []string
+	actorSeen := map[string]bool{}
+	for _, sec := range d.Sections {
+		for _, task := range sec.Tasks {
+			for _, a := range task.Actors {
+				if !actorSeen[a] {
+					actorSeen[a] = true
+					actorOrder = append(actorOrder, a)
+				}
+			}
+		}
+	}
+	numActors := len(actorOrder)
+	firstActorRow := journeyScoreRow + 1
+	bottomRow := firstActorRow + numActors
+
 	// --- Row heights ---
 	for _, rh := range []struct {
 		row int
@@ -119,16 +140,27 @@ func (g *JourneyDrawing) drawUserJourney() error {
 		{journeyTaskRow, journeyTaskPt},
 		{journeyArrowRow, journeyArrowPt},
 		{journeyScoreRow, journeyScorePt},
-		{journeyBottomRow, journeyBottomPt},
 	} {
 		if err := f.SetRowHeight(g.Sheet, rh.row, rh.pt); err != nil {
 			return fmt.Errorf("set row %d height: %w", rh.row, err)
 		}
 	}
+	for i := range numActors {
+		if err := f.SetRowHeight(g.Sheet, firstActorRow+i, journeyActorPt); err != nil {
+			return fmt.Errorf("set actor row %d height: %w", i, err)
+		}
+	}
+	if err := f.SetRowHeight(g.Sheet, bottomRow, journeyBottomPt); err != nil {
+		return fmt.Errorf("set bottom row height: %w", err)
+	}
 
 	// --- Column widths ---
 	marginName, _ := excelize.ColumnNumberToName(1)
-	if err := f.SetColWidth(g.Sheet, marginName, marginName, journeyMarginColWidth_); err != nil {
+	labelColWidth := journeyMarginColWidth_
+	if numActors > 0 {
+		labelColWidth = journeyActorLabelColWidth
+	}
+	if err := f.SetColWidth(g.Sheet, marginName, marginName, labelColWidth); err != nil {
 		return fmt.Errorf("set margin col width: %w", err)
 	}
 	for i := 0; i < totalTasks; i++ {
@@ -330,6 +362,69 @@ func (g *JourneyDrawing) drawUserJourney() error {
 			}
 
 			globalIdx++
+		}
+	}
+
+	// --- Phase 5: Actor rows (one row per unique actor, below score row) ---
+	if numActors > 0 {
+		actorRowPx := journeyRowPx(journeyActorPt)
+		actorBoxOffY := (actorRowPx - journeyActorBoxH) / 2
+
+		actorLabelStyle, err := f.NewStyle(&excelize.Style{
+			Font:      &excelize.Font{Size: 10, Color: "444444", Family: "Calibri"},
+			Alignment: &excelize.Alignment{Horizontal: "right", Vertical: "center"},
+		})
+		if err != nil {
+			return fmt.Errorf("create actor label style: %w", err)
+		}
+
+		for ai, actor := range actorOrder {
+			actorRow := firstActorRow + ai
+
+			// Actor name label in column 1
+			labelCell, _ := excelize.CoordinatesToCellName(1, actorRow)
+			if err := f.SetCellValue(g.Sheet, labelCell, actor); err != nil {
+				return fmt.Errorf("set actor label %q: %w", actor, err)
+			}
+			if err := f.SetCellStyle(g.Sheet, labelCell, labelCell, actorLabelStyle); err != nil {
+				return fmt.Errorf("set actor label style: %w", err)
+			}
+
+			// Participation indicator per task
+			globalIdx = 0
+			for sectionIdx, sec := range d.Sections {
+				color := journeySecColor_(sectionIdx)
+				for taskIdx, task := range sec.Tasks {
+					colName, _ := excelize.ColumnNumberToName(journeyTaskColNum(globalIdx))
+					cellRef := fmt.Sprintf("%s%d", colName, actorRow)
+
+					participates := slices.Contains(task.Actors, actor)
+
+					if participates {
+						boxW := uint(evtColPx - 4)
+						if err := f.AddShape(g.Sheet, &excelize.Shape{
+							Cell:   cellRef,
+							Type:   "roundRect",
+							Width:  boxW,
+							Height: uint(journeyActorBoxH),
+							Line:   excelize.ShapeLine{Color: color.border, Width: &lw},
+							Fill:   excelize.Fill{Color: []string{color.taskFill}, Pattern: 1},
+							Paragraph: []excelize.RichTextRun{{
+								Text: " ",
+								Font: &excelize.Font{Size: 1},
+							}},
+							Format: excelize.GraphicOptions{
+								Name:    fmt.Sprintf("actor_%d_%d_%d", ai, sectionIdx, taskIdx),
+								OffsetX: 2,
+								OffsetY: actorBoxOffY,
+							},
+						}); err != nil {
+							return fmt.Errorf("actor %q indicator for task %q: %w", actor, task.Title, err)
+						}
+					}
+					globalIdx++
+				}
+			}
 		}
 	}
 
