@@ -8,12 +8,13 @@ import (
 
 func TestParsePieChart(t *testing.T) {
 	tests := []struct {
-		name       string
-		input      string
-		wantErr    bool
-		wantTitle  string
-		wantSlices int
-		checkSlices func(t *testing.T, slices []*ast.PieSlice)
+		name         string
+		input        string
+		wantErr      bool
+		wantTitle    string
+		wantShowData bool
+		wantSlices   int
+		checkSlices  func(t *testing.T, slices []*ast.PieSlice)
 	}{
 		{
 			name:       "two slices",
@@ -44,10 +45,19 @@ func TestParsePieChart(t *testing.T) {
 			wantSlices: 1,
 		},
 		{
-			name:       "showData ignored",
-			input:      "showData\n\"A\": 1",
-			wantErr:    false,
-			wantSlices: 1,
+			name:         "showData standalone",
+			input:        "showData\n\"A\": 1",
+			wantErr:      false,
+			wantShowData: true,
+			wantSlices:   1,
+		},
+		{
+			name:         "showData inline with title",
+			input:        "showData title Pets\n\"A\": 1",
+			wantErr:      false,
+			wantShowData: true,
+			wantTitle:    "Pets",
+			wantSlices:   1,
 		},
 		{
 			name:       "unquoted label",
@@ -93,6 +103,10 @@ func TestParsePieChart(t *testing.T) {
 
 			if tt.wantTitle != "" && chart.Title != tt.wantTitle {
 				t.Errorf("Title = %q, want %q", chart.Title, tt.wantTitle)
+			}
+
+			if chart.ShowData != tt.wantShowData {
+				t.Errorf("ShowData = %v, want %v", chart.ShowData, tt.wantShowData)
 			}
 
 			if len(chart.Slices) != tt.wantSlices {

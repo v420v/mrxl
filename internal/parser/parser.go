@@ -67,10 +67,17 @@ func normalizedLines(input string) []string {
 }
 
 func (p *Parser) parseByHeader(headerLine string, body []string) (ast.Diagram, error) {
-	header := strings.ToLower(strings.Fields(headerLine)[0])
+	fields := strings.Fields(headerLine)
+	header := strings.ToLower(fields[0])
 	parseFn, ok := p.parsers[header]
 	if !ok {
 		return nil, fmt.Errorf("unsupported diagram header %q", headerLine)
+	}
+	// Inline options after the keyword (e.g. "pie showData title Foo") are
+	// prepended to the body so diagram parsers can handle them uniformly.
+	if len(fields) > 1 {
+		rest := strings.TrimSpace(headerLine[len(fields[0]):])
+		body = append([]string{rest}, body...)
 	}
 	return parseFn(body)
 }

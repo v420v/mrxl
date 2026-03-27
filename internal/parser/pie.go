@@ -9,8 +9,9 @@ import (
 )
 
 type pieParser struct {
-	title  string
-	slices []*ast.PieSlice
+	title    string
+	showData bool
+	slices   []*ast.PieSlice
 }
 
 func newPieParser() *pieParser {
@@ -38,8 +39,14 @@ func (p *pieParser) parseLine(line string) error {
 		return nil
 	}
 
-	// skip "showData" keyword
-	if lower == "showdata" {
+	// showData keyword: render actual values alongside percentages.
+	// May appear as "showData" alone or "showData title Foo" on the pie header line.
+	if strings.HasPrefix(lower, "showdata") {
+		p.showData = true
+		rest := strings.TrimSpace(line[len("showdata"):])
+		if strings.HasPrefix(strings.ToLower(rest), "title ") {
+			p.title = strings.TrimSpace(rest[len("title "):])
+		}
 		return nil
 	}
 
@@ -65,5 +72,5 @@ func (p *pieParser) result() (ast.Diagram, error) {
 	if len(p.slices) == 0 {
 		return nil, fmt.Errorf("pie chart has no slices")
 	}
-	return ast.NewPieChart(p.title, p.slices), nil
+	return ast.NewPieChart(p.title, p.showData, p.slices), nil
 }

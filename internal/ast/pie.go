@@ -1,12 +1,13 @@
 package ast
 
 type PieChart struct {
-	Title  string
-	Slices []*PieSlice
+	Title    string
+	ShowData bool
+	Slices   []*PieSlice
 }
 
-func NewPieChart(title string, slices []*PieSlice) Diagram {
-	return &PieChart{Title: title, Slices: slices}
+func NewPieChart(title string, showData bool, slices []*PieSlice) Diagram {
+	return &PieChart{Title: title, ShowData: showData, Slices: slices}
 }
 
 func (d *PieChart) Type() string {

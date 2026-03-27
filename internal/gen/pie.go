@@ -70,6 +70,7 @@ func (g *PieDrawing) drawPieChart() error {
 		},
 		PlotArea: excelize.ChartPlotArea{
 			ShowPercent: true,
+			ShowVal:     d.ShowData,
 		},
 	}
 
