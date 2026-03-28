@@ -1,6 +1,6 @@
 # MRXL
 
-![Screenshot of MRXL](./images/top.png)
+![Screenshot of MRXL](./images/top.jpg)
 
 A CLI tool that converts Mermaid diagrams into Excel (`.xlsx`) files.
 
